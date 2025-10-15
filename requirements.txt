@@ -2,3 +2,4 @@ streamlit==1.37.0
 pandas==2.2.2
 streamlit-echarts==0.4.0
 pyecharts==2.0.4
+pyarrow==18.1.0

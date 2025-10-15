@@ -24,9 +24,11 @@ consolidar_dados.py
 atualizar_dashboard.py
 OTIMIZACAO.md
 
-# Dados - ignorar arquivos originais, manter só o consolidado
+# Dados - usar Parquet ao invés de CSV
 dados/*.csv
-!dados/dados_consolidados_2025.csv
+dados/*.db
+# Manter apenas o arquivo Parquet otimizado (7 MB)
+!dados/inventario.parquet
 
 # IDE
 .vscode/

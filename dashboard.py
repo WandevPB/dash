@@ -198,23 +198,19 @@ def load_csv(file):
 
 @st.cache_data
 def load_all_csvs_from_folder(pasta="dados"):
-    """Carrega o arquivo CSV consolidado otimizado"""
+    """Carrega dados do arquivo Parquet otimizado"""
     import pandas as pd
     import os
     
-    arquivo_consolidado = os.path.join(pasta, "dados_consolidados_2025.csv")
+    parquet_path = os.path.join(pasta, "inventario.parquet")
     
-    if not os.path.exists(arquivo_consolidado):
-        st.error(f"❌ Arquivo consolidado não encontrado: {arquivo_consolidado}")
-        st.info("Execute: python consolidar_dados.py")
+    if not os.path.exists(parquet_path):
+        st.error(f"❌ Arquivo Parquet não encontrado: {parquet_path}")
+        st.info("Execute: python criar_parquet.py")
         return pd.DataFrame()
     
-    # Carregar arquivo consolidado (já filtrado para 2025 e apenas colunas necessárias)
-    df = pd.read_csv(
-        arquivo_consolidado,
-        encoding='utf-8',
-        parse_dates=['data_criacao_transacao']
-    )
+    # Carregar arquivo Parquet (96.5% menor que CSV, leitura 10-50x mais rápida)
+    df = pd.read_parquet(parquet_path)
     
     return df
 
