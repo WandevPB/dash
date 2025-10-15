@@ -196,11 +196,12 @@ def load_csv(file):
     sep = detect_sep(file)
     return pd.read_csv(file, sep=sep, low_memory=False)
 
-@st.cache_data
+@st.cache_data(ttl=3600, show_spinner="🔄 Carregando dados otimizados...")
 def load_all_csvs_from_folder(pasta="dados"):
-    """Carrega dados do arquivo Parquet otimizado"""
+    """Carrega dados do arquivo Parquet otimizado com controle de memória"""
     import pandas as pd
     import os
+    import gc
     
     parquet_path = os.path.join(pasta, "inventario.parquet")
     
@@ -209,23 +210,52 @@ def load_all_csvs_from_folder(pasta="dados"):
         st.info("Execute: python criar_parquet.py")
         return pd.DataFrame()
     
-    # Carregar arquivo Parquet (96.5% menor que CSV, leitura 10-50x mais rápida)
-    print(f"✅ Carregando dados do arquivo Parquet: {parquet_path}")
-    df = pd.read_parquet(parquet_path)
-    print(f"✅ Parquet carregado: {len(df):,} registros em memória")
+    # Carregar apenas as colunas necessárias para economizar memória
+    colunas_necessarias = [
+        'data_criacao_transacao',
+        'transacao_id', 
+        'categoria',
+        'subcategoria',
+        'numero_serie',
+        'quantidade',
+        'deposito_origem_nome'
+    ]
+    
+    # Carregar Parquet com otimizações de memória
+    df = pd.read_parquet(
+        parquet_path,
+        columns=colunas_necessarias,
+        engine='pyarrow'
+    )
+    
+    # Filtrar apenas 2025 logo na leitura para reduzir memória
+    df['data_criacao_transacao'] = pd.to_datetime(df['data_criacao_transacao'], errors='coerce')
+    df = df[(df['data_criacao_transacao'] >= '2025-01-01') & 
+            (df['data_criacao_transacao'] <= '2025-09-30')].copy()
+    
+    # Otimizar tipos de dados para usar menos memória
+    df['categoria'] = df['categoria'].astype('category')
+    df['deposito_origem_nome'] = df['deposito_origem_nome'].astype('category')
+    df['quantidade'] = pd.to_numeric(df['quantidade'], errors='coerce', downcast='float')
+    
+    # Forçar garbage collection
+    gc.collect()
     
     return df
 
-@st.cache_data
+@st.cache_data(ttl=3600)
 def enrich(df):
-    """Processa e enriquece os dados - COM CACHE"""
-    df.columns = [c.lower().strip() for c in df.columns]
-    df["data_criacao_transacao"] = pd.to_datetime(df["data_criacao_transacao"], errors="coerce", dayfirst=True)
+    """Processa e enriquece os dados - COM CACHE e otimização de memória"""
+    import gc
     
-    # Filtrar apenas dados de 2025: 01/01/2025 até 30/09/2025
-    data_inicio = pd.Timestamp("2025-01-01")
-    data_fim = pd.Timestamp("2025-09-30")
-    df = df[(df["data_criacao_transacao"] >= data_inicio) & (df["data_criacao_transacao"] <= data_fim)]
+    # Fazer cópia para evitar SettingWithCopyWarning
+    df = df.copy()
+    
+    df.columns = [c.lower().strip() for c in df.columns]
+    
+    # Data já foi filtrada no load, apenas garantir que está no formato correto
+    if not pd.api.types.is_datetime64_any_dtype(df["data_criacao_transacao"]):
+        df["data_criacao_transacao"] = pd.to_datetime(df["data_criacao_transacao"], errors="coerce", dayfirst=True)
     
     # Criar coluna mes com nome do mês
     df["mes_num"] = df["data_criacao_transacao"].dt.month
@@ -234,13 +264,16 @@ def enrich(df):
         5: "Maio", 6: "Junho", 7: "Julho", 8: "Agosto",
         9: "Setembro", 10: "Outubro", 11: "Novembro", 12: "Dezembro"
     }
-    df["mes"] = df["mes_num"].map(meses_map)
+    df["mes"] = df["mes_num"].map(meses_map).astype('category')
     
-    df["quantidade"] = pd.to_numeric(df["quantidade"], errors="coerce").fillna(0)
-    df["quantidade"] = df["quantidade"].replace(0, 1)
-    df["localidade"] = df["deposito_origem_nome"].apply(normalizar_deposito)
+    # Quantidade já foi otimizada no load
+    if df["quantidade"].isna().any():
+        df["quantidade"] = df["quantidade"].fillna(1)
+    df.loc[df["quantidade"] == 0, "quantidade"] = 1
     
-    # Verificar se tem número de série (verificar se coluna existe e se tem valor)
+    df["localidade"] = df["deposito_origem_nome"].apply(normalizar_deposito).astype('category')
+    
+    # Verificar se tem número de série
     if "numero_serie" in df.columns:
         df["tem_serie"] = df["numero_serie"].astype(str).str.strip().ne("") & df["numero_serie"].notna()
     else:
@@ -256,8 +289,11 @@ def enrich(df):
     
     df["codigo_sap"] = df["subcategoria"].apply(extrair_codigo_sap)
     
-    # Identificar cabos pela categoria (CABO ou CABO ELETRICO)
+    # Identificar cabos pela categoria (já é category)
     df["is_cabo"] = df["categoria"].astype(str).str.upper().str.strip().isin(["CABO", "CABO ELETRICO"])
+    
+    # Forçar garbage collection
+    gc.collect()
     
     return df
 
