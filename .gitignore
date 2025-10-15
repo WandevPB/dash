@@ -21,6 +21,9 @@ dashboard_old.py
 
 # Scripts de otimização (não precisa no deploy)
 consolidar_dados.py
+comprimir_dados.py
+criar_database.py
+criar_parquet.py
 atualizar_dashboard.py
 OTIMIZACAO.md
 

@@ -210,7 +210,9 @@ def load_all_csvs_from_folder(pasta="dados"):
         return pd.DataFrame()
     
     # Carregar arquivo Parquet (96.5% menor que CSV, leitura 10-50x mais rápida)
+    print(f"✅ Carregando dados do arquivo Parquet: {parquet_path}")
     df = pd.read_parquet(parquet_path)
+    print(f"✅ Parquet carregado: {len(df):,} registros em memória")
     
     return df
 
